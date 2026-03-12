@@ -1,9 +1,10 @@
 import os
 import asyncio
+import json
 import feedparser
 from googleapiclient.discovery import build
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
 # -------------------
 # Переменные окружения
@@ -22,19 +23,37 @@ if not YOUTUBE_API_KEY:
 youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
 
 # -------------------
-# Хранилища данных
+# Файлы для хранения данных
 # -------------------
-users = {}         # chat_id → RSS канал
-last_videos = {}   # chat_id → последнее видео
+USERS_FILE = "users.json"
+LAST_VIDEOS_FILE = "last_videos.json"
+
+try:
+    with open(USERS_FILE, "r") as f:
+        users = json.load(f)
+except FileNotFoundError:
+    users = {}
+
+try:
+    with open(LAST_VIDEOS_FILE, "r") as f:
+        last_videos = json.load(f)
+except FileNotFoundError:
+    last_videos = {}
+
+def save_users():
+    with open(USERS_FILE, "w") as f:
+        json.dump(users, f)
+
+def save_last_videos():
+    with open(LAST_VIDEOS_FILE, "w") as f:
+        json.dump(last_videos, f)
 
 # -------------------
-# Функция для получения channel_id
+# Получение channel_id
 # -------------------
 def get_channel_id(url: str) -> str | None:
-    """Возвращает channel_id по ссылке @username или /channel/UCxxx"""
     if "/channel/" in url:
         return url.split("/channel/")[1]
-
     if "@" in url:
         username = url.split("@")[1]
         try:
@@ -53,15 +72,13 @@ def get_channel_id(url: str) -> str | None:
     return None
 
 # -------------------
-# Команды Telegram
+# Telegram команды
 # -------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [[InlineKeyboardButton("Мои подписки", callback_data="mychannels")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-        "🎬 YouTube Tracker Bot\n\n"
-        "Отправь команду:\n"
-        "/track <ссылка_на_канал>\n\n"
-        "Пример:\n"
-        "/track https://www.youtube.com/@kuplinovplay"
+        "🎬 YouTube Tracker Bot\n\nВыберите действие:", reply_markup=reply_markup
     )
 
 async def track(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -71,60 +88,78 @@ async def track(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     url = context.args[0]
     channel_id = get_channel_id(url)
-
     if not channel_id:
         await update.message.reply_text("Не удалось определить канал.")
         return
 
     rss = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
-    chat_id = update.message.chat_id
-    users[chat_id] = rss
+    chat_id = str(update.message.chat_id)
 
-    await update.message.reply_text("Канал добавлен! 🎉 Теперь буду присылать новые видео.")
+    if chat_id not in users:
+        users[chat_id] = []
+
+    if rss not in users[chat_id]:
+        users[chat_id].append(rss)
+        save_users()
+        await update.message.reply_text("Канал добавлен! 🎉")
+    else:
+        await update.message.reply_text("Вы уже подписаны на этот канал.")
+
+async def mychannels(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = str(update.message.chat_id)
+    if chat_id not in users or not users[chat_id]:
+        await update.message.reply_text("Вы пока ни на что не подписаны.")
+        return
+    message = "Ваши подписки:\n" + "\n".join(users[chat_id])
+    await update.message.reply_text(message)
+
+async def button_handler(update, context):
+    query = update.callback_query
+    await query.answer()
+    if query.data == "mychannels":
+        await mychannels(query, context)
 
 # -------------------
 # Автопроверка новых видео
 # -------------------
 async def check_videos(app):
-    await asyncio.sleep(5)  # ждём старта приложения
-
+    await asyncio.sleep(5)
     while True:
-        for chat_id, rss in users.items():
-            feed = feedparser.parse(rss)
-            if not feed.entries:
-                continue
-
-            video = feed.entries[0]
-
-            # если бот только начал следить — запоминаем текущее видео
-            if chat_id not in last_videos:
-                last_videos[chat_id] = video.id
-                continue
-
-            # новое видео
-            if video.id != last_videos[chat_id]:
-                try:
-                    await app.bot.send_message(
-                        chat_id=chat_id,
-                        text=f"🎬 Новое видео!\n\n{video.title}\n{video.link}"
-                    )
-                    last_videos[chat_id] = video.id
-                except Exception as e:
-                    print("Ошибка при автопостинге:", e)
-
+        for chat_id, rss_list in users.items():
+            for rss in rss_list:
+                feed = feedparser.parse(rss)
+                if not feed.entries:
+                    continue
+                video = feed.entries[0]
+                if chat_id not in last_videos:
+                    last_videos[chat_id] = {}
+                if rss not in last_videos[chat_id]:
+                    last_videos[chat_id][rss] = video.id
+                    save_last_videos()
+                    continue
+                if video.id != last_videos[chat_id][rss]:
+                    try:
+                        await app.bot.send_message(
+                            chat_id=int(chat_id),
+                            text=f"🎬 Новое видео!\n{video.title}\n{video.link}"
+                        )
+                        last_videos[chat_id][rss] = video.id
+                        save_last_videos()
+                    except Exception as e:
+                        print("Ошибка при автопостинге:", e)
         await asyncio.sleep(300)  # проверка каждые 5 минут
 
 # -------------------
-# Инициализация приложения Telegram
+# Инициализация Telegram
 # -------------------
 async def post_init(app):
     app.create_task(check_videos(app))
 
 app = ApplicationBuilder().token(BOT_TOKEN).build()
-
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("track", track))
-
+app.add_handler(CommandHandler("mychannels", mychannels))
+app.add_handler(CallbackQueryHandler(button_handler))
 app.post_init = post_init
 
 # -------------------
