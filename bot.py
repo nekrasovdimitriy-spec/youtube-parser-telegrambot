@@ -19,20 +19,38 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
 
 # Проверяем наличие всех необходимых переменных для Google credentials
-required_google_vars = [
-    "GOOGLE_PROJECT_ID",
-    "GOOGLE_PRIVATE_KEY_ID", 
-    "GOOGLE_PRIVATE_KEY",
-    "GOOGLE_CLIENT_EMAIL",
-    "GOOGLE_CLIENT_ID"
-]
+required_google_vars = {
+    "GOOGLE_PROJECT_ID": os.environ.get("GOOGLE_PROJECT_ID"),
+    "GOOGLE_PRIVATE_KEY_ID": os.environ.get("GOOGLE_PRIVATE_KEY_ID"),
+    "GOOGLE_PRIVATE_KEY": os.environ.get("GOOGLE_PRIVATE_KEY"),
+    "GOOGLE_CLIENT_EMAIL": os.environ.get("GOOGLE_CLIENT_EMAIL"),
+    "GOOGLE_CLIENT_ID": os.environ.get("GOOGLE_CLIENT_ID")
+}
 
-if not BOT_TOKEN or not YOUTUBE_API_KEY:
-    raise ValueError("Не установлены BOT_TOKEN или YOUTUBE_API_KEY!")
+if not BOT_TOKEN:
+    raise ValueError("Не установлена переменная окружения BOT_TOKEN!")
 
-for var in required_google_vars:
-    if not os.environ.get(var):
-        raise ValueError(f"Не установлена переменная окружения {var}!")
+if not YOUTUBE_API_KEY:
+    raise ValueError("Не установлена переменная окружения YOUTUBE_API_KEY!")
+
+# Проверяем каждую переменную
+missing_vars = []
+for var_name, var_value in required_google_vars.items():
+    if not var_value:
+        missing_vars.append(var_name)
+
+if missing_vars:
+    error_message = "Не установлены следующие переменные окружения:\n"
+    for var in missing_vars:
+        error_message += f"  - {var}\n"
+    raise ValueError(error_message)
+
+print("Все переменные окружения установлены:")
+print(f"GOOGLE_PROJECT_ID: {required_google_vars['GOOGLE_PROJECT_ID'][:10]}...")
+print(f"GOOGLE_PRIVATE_KEY_ID: {required_google_vars['GOOGLE_PRIVATE_KEY_ID'][:10]}...")
+print(f"GOOGLE_PRIVATE_KEY: длина {len(required_google_vars['GOOGLE_PRIVATE_KEY'])} символов")
+print(f"GOOGLE_CLIENT_EMAIL: {required_google_vars['GOOGLE_CLIENT_EMAIL']}")
+print(f"GOOGLE_CLIENT_ID: {required_google_vars['GOOGLE_CLIENT_ID'][:10]}...")
 
 
 # =========================
@@ -41,28 +59,57 @@ for var in required_google_vars:
 
 google_creds = {
     "type": "service_account",
-    "project_id": os.environ.get("GOOGLE_PROJECT_ID"),
-    "private_key_id": os.environ.get("GOOGLE_PRIVATE_KEY_ID"),
-    "private_key": os.environ.get("GOOGLE_PRIVATE_KEY").replace("\\n", "\n"),
-    "client_email": os.environ.get("GOOGLE_CLIENT_EMAIL"),
-    "client_id": os.environ.get("GOOGLE_CLIENT_ID"),
+    "project_id": required_google_vars["GOOGLE_PROJECT_ID"],
+    "private_key_id": required_google_vars["GOOGLE_PRIVATE_KEY_ID"],
+    "private_key": required_google_vars["GOOGLE_PRIVATE_KEY"].replace("\\n", "\n"),
+    "client_email": required_google_vars["GOOGLE_CLIENT_EMAIL"],
+    "client_id": required_google_vars["GOOGLE_CLIENT_ID"],
     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
     "token_uri": "https://oauth2.googleapis.com/token",
     "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{os.environ.get('GOOGLE_CLIENT_EMAIL')}"
+    "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{required_google_vars['GOOGLE_CLIENT_EMAIL']}"
 }
+
+# Проверим, что private_key содержит правильный формат
+print("\nПроверка GOOGLE_PRIVATE_KEY:")
+if "BEGIN PRIVATE KEY" in google_creds["private_key"]:
+    print("  ✅ Ключ содержит BEGIN PRIVATE KEY")
+else:
+    print("  ❌ Ключ не содержит BEGIN PRIVATE KEY")
+
+if "END PRIVATE KEY" in google_creds["private_key"]:
+    print("  ✅ Ключ содержит END PRIVATE KEY")
+else:
+    print("  ❌ Ключ не содержит END PRIVATE KEY")
+
+print(f"  Количество строк в ключе: {len(google_creds['private_key'].splitlines())}")
 
 scopes = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
-credentials = Credentials.from_service_account_info(google_creds, scopes=scopes)
+try:
+    credentials = Credentials.from_service_account_info(google_creds, scopes=scopes)
+    print("\n✅ Credentials созданы успешно")
+except Exception as e:
+    print(f"\n❌ Ошибка создания credentials: {e}")
+    raise
 
-gc = gspread.authorize(credentials)
+try:
+    gc = gspread.authorize(credentials)
+    print("✅ gspread авторизован успешно")
+except Exception as e:
+    print(f"❌ Ошибка авторизации gspread: {e}")
+    raise
 
 SHEET_NAME = "YouTubeBotSubscriptions"
-sheet = gc.open(SHEET_NAME).sheet1
+try:
+    sheet = gc.open(SHEET_NAME).sheet1
+    print(f"✅ Таблица '{SHEET_NAME}' открыта успешно")
+except Exception as e:
+    print(f"❌ Ошибка открытия таблицы '{SHEET_NAME}': {e}")
+    raise
 
 
 # =========================
@@ -225,6 +272,7 @@ async def check_videos(app):
 # =========================
 
 async def post_init(app):
+    print("\n✅ Бот запущен и готов к работе!")
     app.create_task(check_videos(app))
 
 
@@ -237,4 +285,5 @@ app.add_handler(CallbackQueryHandler(button_handler))
 
 app.post_init = post_init
 
+print("🚀 Запуск бота...")
 app.run_polling()
