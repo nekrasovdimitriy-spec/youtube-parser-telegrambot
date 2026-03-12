@@ -17,6 +17,10 @@ GOOGLE_CREDS_JSON = os.environ.get("GOOGLE_CREDS")
 SHEET_NAME = "YouTubeBotSubscriptions"
 SHEET_TAB = "Subscriptions"
 
+print("BOT_TOKEN:", BOT_TOKEN)
+print("YOUTUBE_API_KEY:", YOUTUBE_API_KEY)
+print("GOOGLE_CREDS:", bool(GOOGLE_CREDS_JSON))
+
 if not BOT_TOKEN or not YOUTUBE_API_KEY or not GOOGLE_CREDS_JSON:
     raise ValueError("Не установлены все переменные окружения!")
 
@@ -147,3 +151,4 @@ app.add_handler(CommandHandler("mychannels", mychannels))
 app.add_handler(CallbackQueryHandler(button_handler))
 app.post_init = post_init
 app.run_polling()
+
