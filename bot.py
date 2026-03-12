@@ -1,56 +1,69 @@
+import os
 import asyncio
 import feedparser
-import requests
-import re
-import os
-
+from googleapiclient.discovery import build
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-# --- берём токен из переменной окружения ---
-TOKEN = os.environ.get("BOT_TOKEN")
-if not TOKEN:
-    raise ValueError("Переменная окружения BOT_TOKEN не установлена!")
+# -------------------
+# Переменные окружения
+# -------------------
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
 
-# Словарь: chat_id → RSS канал
-users = {}
+if not BOT_TOKEN:
+    raise ValueError("Не установлена переменная BOT_TOKEN!")
+if not YOUTUBE_API_KEY:
+    raise ValueError("Не установлена переменная YOUTUBE_API_KEY!")
 
-# Словарь: chat_id → последнее видео
-last_videos = {}
+# -------------------
+# Инициализация YouTube API
+# -------------------
+youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
 
-# --- функция для получения channel_id из ссылки ---
-def get_channel_id(url):
-    headers = {"User-Agent": "Mozilla/5.0"}
-    r = requests.get(url, headers=headers)
-    html = r.text
+# -------------------
+# Хранилища данных
+# -------------------
+users = {}         # chat_id → RSS канал
+last_videos = {}   # chat_id → последнее видео
 
-    # основной способ
-    match = re.search(r'"channelId":"(UC[\w-]+)"', html)
-    if match:
-        return match.group(1)
-
-    # запасной способ
-    match = re.search(r'channelId=(UC[\w-]+)', html)
-    if match:
-        return match.group(1)
-
-    # если ссылка уже вида /channel/UCxxxx
+# -------------------
+# Функция для получения channel_id
+# -------------------
+def get_channel_id(url: str) -> str | None:
+    """Возвращает channel_id по ссылке @username или /channel/UCxxx"""
     if "/channel/" in url:
         return url.split("/channel/")[1]
 
+    if "@" in url:
+        username = url.split("@")[1]
+        try:
+            request = youtube.search().list(
+                part="snippet",
+                q=username,
+                type="channel",
+                maxResults=1
+            )
+            response = request.execute()
+            if response["items"]:
+                return response["items"][0]["snippet"]["channelId"]
+        except Exception as e:
+            print("Ошибка YouTube API:", e)
+            return None
     return None
 
-# --- команда /start ---
+# -------------------
+# Команды Telegram
+# -------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🎬 YouTube Tracker Bot\n\n"
         "Отправь команду:\n"
-        "/track ссылка_на_канал\n\n"
+        "/track <ссылка_на_канал>\n\n"
         "Пример:\n"
         "/track https://www.youtube.com/@kuplinovplay"
     )
 
-# --- команда /track ---
 async def track(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Пришли ссылку на канал.")
@@ -65,13 +78,16 @@ async def track(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     rss = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
     chat_id = update.message.chat_id
-
     users[chat_id] = rss
+
     await update.message.reply_text("Канал добавлен! 🎉 Теперь буду присылать новые видео.")
 
-# --- функция проверки новых видео ---
+# -------------------
+# Автопроверка новых видео
+# -------------------
 async def check_videos(app):
-    await asyncio.sleep(5)  # ждём, пока бот стартует
+    await asyncio.sleep(5)  # ждём старта приложения
+
     while True:
         for chat_id, rss in users.items():
             feed = feedparser.parse(rss)
@@ -80,12 +96,12 @@ async def check_videos(app):
 
             video = feed.entries[0]
 
-            # если бот только начал следить, запоминаем видео
+            # если бот только начал следить — запоминаем текущее видео
             if chat_id not in last_videos:
                 last_videos[chat_id] = video.id
                 continue
 
-            # если появилось новое видео
+            # новое видео
             if video.id != last_videos[chat_id]:
                 try:
                     await app.bot.send_message(
@@ -95,21 +111,23 @@ async def check_videos(app):
                     last_videos[chat_id] = video.id
                 except Exception as e:
                     print("Ошибка при автопостинге:", e)
+
         await asyncio.sleep(300)  # проверка каждые 5 минут
 
-# --- запуск автопроверки после старта ---
+# -------------------
+# Инициализация приложения Telegram
+# -------------------
 async def post_init(app):
     app.create_task(check_videos(app))
 
-# --- создаём приложение ---
-app = ApplicationBuilder().token(TOKEN).build()
+app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-# команды
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("track", track))
 
-# автопостинг
 app.post_init = post_init
 
-# запуск
+# -------------------
+# Запуск бота
+# -------------------
 app.run_polling()
