@@ -1,6 +1,5 @@
 import os
 import json
-import base64
 import asyncio
 import feedparser
 import gspread
@@ -18,25 +17,47 @@ from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandle
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
-GOOGLE_CREDS_BASE64 = os.environ.get("GOOGLE_CREDS_BASE64")
 
-if not BOT_TOKEN or not YOUTUBE_API_KEY or not GOOGLE_CREDS_BASE64:
-    raise ValueError("Не установлены все переменные окружения!")
+# Проверяем наличие всех необходимых переменных для Google credentials
+required_google_vars = [
+    "GOOGLE_PROJECT_ID",
+    "GOOGLE_PRIVATE_KEY_ID", 
+    "GOOGLE_PRIVATE_KEY",
+    "GOOGLE_CLIENT_EMAIL",
+    "GOOGLE_CLIENT_ID"
+]
+
+if not BOT_TOKEN or not YOUTUBE_API_KEY:
+    raise ValueError("Не установлены BOT_TOKEN или YOUTUBE_API_KEY!")
+
+for var in required_google_vars:
+    if not os.environ.get(var):
+        raise ValueError(f"Не установлена переменная окружения {var}!")
 
 
 # =========================
-# GOOGLE CREDS FROM BASE64
+# GOOGLE CREDS FROM ENV VARIABLES
 # =========================
 
-creds_json = base64.b64decode(GOOGLE_CREDS_BASE64).decode("utf-8")
-creds_dict = json.loads(creds_json)
+google_creds = {
+    "type": "service_account",
+    "project_id": os.environ.get("GOOGLE_PROJECT_ID"),
+    "private_key_id": os.environ.get("GOOGLE_PRIVATE_KEY_ID"),
+    "private_key": os.environ.get("GOOGLE_PRIVATE_KEY").replace("\\n", "\n"),
+    "client_email": os.environ.get("GOOGLE_CLIENT_EMAIL"),
+    "client_id": os.environ.get("GOOGLE_CLIENT_ID"),
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token",
+    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+    "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{os.environ.get('GOOGLE_CLIENT_EMAIL')}"
+}
 
 scopes = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
-credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+credentials = Credentials.from_service_account_info(google_creds, scopes=scopes)
 
 gc = gspread.authorize(credentials)
 
