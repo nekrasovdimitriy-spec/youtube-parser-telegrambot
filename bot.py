@@ -83,11 +83,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def track(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Пришли ссылку на канал.")
+        await update.message.reply_text("Пришлите ссылку на канал.")
         return
 
-    url = context.args[0]
-    channel_id = get_channel_id(url)
+    youtube_url = context.args[0]
+    channel_id = get_channel_id(youtube_url)
     if not channel_id:
         await update.message.reply_text("Не удалось определить канал.")
         return
@@ -98,19 +98,22 @@ async def track(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat_id not in users:
         users[chat_id] = []
 
-    if rss not in users[chat_id]:
-        users[chat_id].append(rss)
-        save_users()
-        await update.message.reply_text("Канал добавлен! 🎉")
-    else:
+    # Проверяем, подписан ли уже
+    if any(x["rss"] == rss for x in users[chat_id]):
         await update.message.reply_text("Вы уже подписаны на этот канал.")
+        return
+
+    users[chat_id].append({"rss": rss, "url": youtube_url})
+    save_users()
+    await update.message.reply_text("Канал добавлен! 🎉")
 
 async def mychannels(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.message.chat_id)
     if chat_id not in users or not users[chat_id]:
         await update.message.reply_text("Вы пока ни на что не подписаны.")
         return
-    message = "Ваши подписки:\n" + "\n".join(users[chat_id])
+
+    message = "Ваши подписки:\n" + "\n".join(x["url"] for x in users[chat_id])
     await update.message.reply_text(message)
 
 async def button_handler(update, context):
@@ -125,8 +128,9 @@ async def button_handler(update, context):
 async def check_videos(app):
     await asyncio.sleep(5)
     while True:
-        for chat_id, rss_list in users.items():
-            for rss in rss_list:
+        for chat_id, channels in users.items():
+            for ch in channels:
+                rss = ch["rss"]
                 feed = feedparser.parse(rss)
                 if not feed.entries:
                     continue
