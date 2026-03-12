@@ -1,6 +1,0 @@
-{
-  "youtube_rss": "https://www.youtube.com/feeds/videos.xml?channel_id=UCdKuE7a2QZeHPhDntXVZ91w",
-  "start": "Привет! Я тестовый бот Kuplinov_test_bot 🎮\nВыбирай команду ниже 👇",
-  "help": "Команды:\n/latest - последние видео\n/help - помощь",
-  "check_interval": 300
-}
