@@ -1,6 +1,4 @@
 import os
-import json
-import base64
 import asyncio
 import feedparser
 import gspread
@@ -12,31 +10,30 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
 
-# =========================
-# ENV VARIABLES
-# =========================
+# =====================
+# ENV
+# =====================
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
-GOOGLE_CREDS_BASE64 = os.environ.get("GOOGLE_CREDS_BASE64")
 
-if not BOT_TOKEN or not YOUTUBE_API_KEY or not GOOGLE_CREDS_BASE64:
-    raise ValueError("Не установлены все переменные окружения!")
+if not BOT_TOKEN or not YOUTUBE_API_KEY:
+    raise ValueError("Не установлены переменные окружения!")
 
 
-# =========================
-# GOOGLE CREDS FROM BASE64
-# =========================
-
-creds_json = base64.b64decode(GOOGLE_CREDS_BASE64).decode("utf-8")
-creds_dict = json.loads(creds_json)
+# =====================
+# GOOGLE SHEETS
+# =====================
 
 scopes = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
-credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+credentials = Credentials.from_service_account_file(
+    "service_account.json",
+    scopes=scopes
+)
 
 gc = gspread.authorize(credentials)
 
@@ -44,9 +41,9 @@ SHEET_NAME = "YouTubeBotSubscriptions"
 sheet = gc.open(SHEET_NAME).sheet1
 
 
-# =========================
+# =====================
 # YOUTUBE API
-# =========================
+# =====================
 
 youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
 
@@ -74,9 +71,9 @@ def get_channel_id(url):
     return None
 
 
-# =========================
-# TELEGRAM COMMANDS
-# =========================
+# =====================
+# COMMANDS
+# =====================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -87,7 +84,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_text(
-        "YouTube Tracker Bot\n\nИспользуй:\n/track ссылка_на_канал",
+        "🎬 YouTube Tracker Bot\n\n"
+        "Команда подписки:\n"
+        "/track ссылка_на_канал",
         reply_markup=reply_markup
     )
 
@@ -152,9 +151,9 @@ async def button_handler(update, context):
         await mychannels(update, context)
 
 
-# =========================
-# VIDEO CHECKER
-# =========================
+# =====================
+# VIDEO CHECK
+# =====================
 
 last_videos = {}
 
@@ -199,9 +198,9 @@ async def check_videos(app):
         await asyncio.sleep(300)
 
 
-# =========================
-# APP INIT
-# =========================
+# =====================
+# APP
+# =====================
 
 async def post_init(app):
     app.create_task(check_videos(app))
