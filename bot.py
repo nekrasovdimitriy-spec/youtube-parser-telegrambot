@@ -12,20 +12,29 @@ from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandle
 
 
 # =========================
-# ENV VARIABLES
+# ENV VARIABLES WITH DEBUG
 # =========================
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
+print("=== ДИАГНОСТИКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ ===")
+print(f"Все переменные окружения: {list(os.environ.keys())}")
 
-# Проверяем наличие всех необходимых переменных для Google credentials
-required_google_vars = {
-    "GOOGLE_PROJECT_ID": os.environ.get("GOOGLE_PROJECT_ID"),
-    "GOOGLE_PRIVATE_KEY_ID": os.environ.get("GOOGLE_PRIVATE_KEY_ID"),
-    "GOOGLE_PRIVATE_KEY": os.environ.get("GOOGLE_PRIVATE_KEY"),
-    "GOOGLE_CLIENT_EMAIL": os.environ.get("GOOGLE_CLIENT_EMAIL"),
-    "GOOGLE_CLIENT_ID": os.environ.get("GOOGLE_CLIENT_ID")
-}
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
+
+# Google credentials
+GOOGLE_PROJECT_ID = os.getenv("GOOGLE_PROJECT_ID")
+GOOGLE_PRIVATE_KEY_ID = os.getenv("GOOGLE_PRIVATE_KEY_ID")
+GOOGLE_PRIVATE_KEY = os.getenv("GOOGLE_PRIVATE_KEY")
+GOOGLE_CLIENT_EMAIL = os.getenv("GOOGLE_CLIENT_EMAIL")
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+
+print(f"BOT_TOKEN: {'✅' if BOT_TOKEN else '❌'}")
+print(f"YOUTUBE_API_KEY: {'✅' if YOUTUBE_API_KEY else '❌'}")
+print(f"GOOGLE_PROJECT_ID: {'✅' if GOOGLE_PROJECT_ID else '❌'}")
+print(f"GOOGLE_PRIVATE_KEY_ID: {'✅' if GOOGLE_PRIVATE_KEY_ID else '❌'}")
+print(f"GOOGLE_PRIVATE_KEY: {'✅' if GOOGLE_PRIVATE_KEY else '❌'}")
+print(f"GOOGLE_CLIENT_EMAIL: {'✅' if GOOGLE_CLIENT_EMAIL else '❌'}")
+print(f"GOOGLE_CLIENT_ID: {'✅' if GOOGLE_CLIENT_ID else '❌'}")
 
 if not BOT_TOKEN:
     raise ValueError("Не установлена переменная окружения BOT_TOKEN!")
@@ -33,56 +42,52 @@ if not BOT_TOKEN:
 if not YOUTUBE_API_KEY:
     raise ValueError("Не установлена переменная окружения YOUTUBE_API_KEY!")
 
-# Проверяем каждую переменную
-missing_vars = []
-for var_name, var_value in required_google_vars.items():
-    if not var_value:
-        missing_vars.append(var_name)
-
-if missing_vars:
-    error_message = "Не установлены следующие переменные окружения:\n"
-    for var in missing_vars:
-        error_message += f"  - {var}\n"
-    raise ValueError(error_message)
-
-print("Все переменные окружения установлены:")
-print(f"GOOGLE_PROJECT_ID: {required_google_vars['GOOGLE_PROJECT_ID'][:10]}...")
-print(f"GOOGLE_PRIVATE_KEY_ID: {required_google_vars['GOOGLE_PRIVATE_KEY_ID'][:10]}...")
-print(f"GOOGLE_PRIVATE_KEY: длина {len(required_google_vars['GOOGLE_PRIVATE_KEY'])} символов")
-print(f"GOOGLE_CLIENT_EMAIL: {required_google_vars['GOOGLE_CLIENT_EMAIL']}")
-print(f"GOOGLE_CLIENT_ID: {required_google_vars['GOOGLE_CLIENT_ID'][:10]}...")
+# Проверяем Google переменные
+if not all([GOOGLE_PROJECT_ID, GOOGLE_PRIVATE_KEY_ID, GOOGLE_PRIVATE_KEY, 
+            GOOGLE_CLIENT_EMAIL, GOOGLE_CLIENT_ID]):
+    
+    error_msg = "Не установлены следующие переменные окружения:\n"
+    if not GOOGLE_PROJECT_ID: error_msg += "  - GOOGLE_PROJECT_ID\n"
+    if not GOOGLE_PRIVATE_KEY_ID: error_msg += "  - GOOGLE_PRIVATE_KEY_ID\n"
+    if not GOOGLE_PRIVATE_KEY: error_msg += "  - GOOGLE_PRIVATE_KEY\n"
+    if not GOOGLE_CLIENT_EMAIL: error_msg += "  - GOOGLE_CLIENT_EMAIL\n"
+    if not GOOGLE_CLIENT_ID: error_msg += "  - GOOGLE_CLIENT_ID\n"
+    
+    # Временно используем GOOGLE_CREDS_BASE64 если он есть
+    GOOGLE_CREDS_BASE64 = os.getenv("GOOGLE_CREDS_BASE64")
+    if GOOGLE_CREDS_BASE64:
+        print("\n⚠️ Используем GOOGLE_CREDS_BASE64 как запасной вариант")
+        use_base64 = True
+    else:
+        raise ValueError(error_msg)
+else:
+    use_base64 = False
 
 
 # =========================
-# GOOGLE CREDS FROM ENV VARIABLES
+# GOOGLE CREDS
 # =========================
 
-google_creds = {
-    "type": "service_account",
-    "project_id": required_google_vars["GOOGLE_PROJECT_ID"],
-    "private_key_id": required_google_vars["GOOGLE_PRIVATE_KEY_ID"],
-    "private_key": required_google_vars["GOOGLE_PRIVATE_KEY"].replace("\\n", "\n"),
-    "client_email": required_google_vars["GOOGLE_CLIENT_EMAIL"],
-    "client_id": required_google_vars["GOOGLE_CLIENT_ID"],
-    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-    "token_uri": "https://oauth2.googleapis.com/token",
-    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{required_google_vars['GOOGLE_CLIENT_EMAIL']}"
-}
-
-# Проверим, что private_key содержит правильный формат
-print("\nПроверка GOOGLE_PRIVATE_KEY:")
-if "BEGIN PRIVATE KEY" in google_creds["private_key"]:
-    print("  ✅ Ключ содержит BEGIN PRIVATE KEY")
+if use_base64:
+    # Старый метод с BASE64
+    print("Используем GOOGLE_CREDS_BASE64 для авторизации")
+    creds_json = base64.b64decode(GOOGLE_CREDS_BASE64).decode("utf-8")
+    creds_dict = json.loads(creds_json)
 else:
-    print("  ❌ Ключ не содержит BEGIN PRIVATE KEY")
-
-if "END PRIVATE KEY" in google_creds["private_key"]:
-    print("  ✅ Ключ содержит END PRIVATE KEY")
-else:
-    print("  ❌ Ключ не содержит END PRIVATE KEY")
-
-print(f"  Количество строк в ключе: {len(google_creds['private_key'].splitlines())}")
+    # Новый метод с отдельными переменными
+    print("Используем отдельные переменные для авторизации")
+    creds_dict = {
+        "type": "service_account",
+        "project_id": GOOGLE_PROJECT_ID,
+        "private_key_id": GOOGLE_PRIVATE_KEY_ID,
+        "private_key": GOOGLE_PRIVATE_KEY.replace("\\n", "\n"),
+        "client_email": GOOGLE_CLIENT_EMAIL,
+        "client_id": GOOGLE_CLIENT_ID,
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{GOOGLE_CLIENT_EMAIL}"
+    }
 
 scopes = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -90,10 +95,10 @@ scopes = [
 ]
 
 try:
-    credentials = Credentials.from_service_account_info(google_creds, scopes=scopes)
-    print("\n✅ Credentials созданы успешно")
+    credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    print("✅ Credentials созданы успешно")
 except Exception as e:
-    print(f"\n❌ Ошибка создания credentials: {e}")
+    print(f"❌ Ошибка создания credentials: {e}")
     raise
 
 try:
@@ -110,6 +115,8 @@ try:
 except Exception as e:
     print(f"❌ Ошибка открытия таблицы '{SHEET_NAME}': {e}")
     raise
+
+print("=== ДИАГНОСТИКА ЗАВЕРШЕНА УСПЕШНО ===\n")
 
 
 # =========================
