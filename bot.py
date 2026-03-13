@@ -1,5 +1,6 @@
 import os
 import json
+import base64
 import asyncio
 import feedparser
 import gspread
@@ -20,21 +21,11 @@ print(f"Все переменные окружения: {list(os.environ.keys())
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
-
-# Google credentials
-GOOGLE_PROJECT_ID = os.getenv("GOOGLE_PROJECT_ID")
-GOOGLE_PRIVATE_KEY_ID = os.getenv("GOOGLE_PRIVATE_KEY_ID")
-GOOGLE_PRIVATE_KEY = os.getenv("GOOGLE_PRIVATE_KEY")
-GOOGLE_CLIENT_EMAIL = os.getenv("GOOGLE_CLIENT_EMAIL")
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CREDS_BASE64 = os.getenv("GOOGLE_CREDS_BASE64")
 
 print(f"BOT_TOKEN: {'✅' if BOT_TOKEN else '❌'}")
 print(f"YOUTUBE_API_KEY: {'✅' if YOUTUBE_API_KEY else '❌'}")
-print(f"GOOGLE_PROJECT_ID: {'✅' if GOOGLE_PROJECT_ID else '❌'}")
-print(f"GOOGLE_PRIVATE_KEY_ID: {'✅' if GOOGLE_PRIVATE_KEY_ID else '❌'}")
-print(f"GOOGLE_PRIVATE_KEY: {'✅' if GOOGLE_PRIVATE_KEY else '❌'}")
-print(f"GOOGLE_CLIENT_EMAIL: {'✅' if GOOGLE_CLIENT_EMAIL else '❌'}")
-print(f"GOOGLE_CLIENT_ID: {'✅' if GOOGLE_CLIENT_ID else '❌'}")
+print(f"GOOGLE_CREDS_BASE64: {'✅' if GOOGLE_CREDS_BASE64 else '❌'}")
 
 if not BOT_TOKEN:
     raise ValueError("Не установлена переменная окружения BOT_TOKEN!")
@@ -42,52 +33,26 @@ if not BOT_TOKEN:
 if not YOUTUBE_API_KEY:
     raise ValueError("Не установлена переменная окружения YOUTUBE_API_KEY!")
 
-# Проверяем Google переменные
-if not all([GOOGLE_PROJECT_ID, GOOGLE_PRIVATE_KEY_ID, GOOGLE_PRIVATE_KEY, 
-            GOOGLE_CLIENT_EMAIL, GOOGLE_CLIENT_ID]):
-    
-    error_msg = "Не установлены следующие переменные окружения:\n"
-    if not GOOGLE_PROJECT_ID: error_msg += "  - GOOGLE_PROJECT_ID\n"
-    if not GOOGLE_PRIVATE_KEY_ID: error_msg += "  - GOOGLE_PRIVATE_KEY_ID\n"
-    if not GOOGLE_PRIVATE_KEY: error_msg += "  - GOOGLE_PRIVATE_KEY\n"
-    if not GOOGLE_CLIENT_EMAIL: error_msg += "  - GOOGLE_CLIENT_EMAIL\n"
-    if not GOOGLE_CLIENT_ID: error_msg += "  - GOOGLE_CLIENT_ID\n"
-    
-    # Временно используем GOOGLE_CREDS_BASE64 если он есть
-    GOOGLE_CREDS_BASE64 = os.getenv("GOOGLE_CREDS_BASE64")
-    if GOOGLE_CREDS_BASE64:
-        print("\n⚠️ Используем GOOGLE_CREDS_BASE64 как запасной вариант")
-        use_base64 = True
-    else:
-        raise ValueError(error_msg)
-else:
-    use_base64 = False
+if not GOOGLE_CREDS_BASE64:
+    raise ValueError("Не установлена переменная окружения GOOGLE_CREDS_BASE64!")
 
 
 # =========================
-# GOOGLE CREDS
+# GOOGLE CREDS FROM BASE64
 # =========================
 
-if use_base64:
-    # Старый метод с BASE64
-    print("Используем GOOGLE_CREDS_BASE64 для авторизации")
+try:
+    print("Декодируем GOOGLE_CREDS_BASE64...")
     creds_json = base64.b64decode(GOOGLE_CREDS_BASE64).decode("utf-8")
+    print(f"JSON декодирован, длина: {len(creds_json)} символов")
+    
     creds_dict = json.loads(creds_json)
-else:
-    # Новый метод с отдельными переменными
-    print("Используем отдельные переменные для авторизации")
-    creds_dict = {
-        "type": "service_account",
-        "project_id": GOOGLE_PROJECT_ID,
-        "private_key_id": GOOGLE_PRIVATE_KEY_ID,
-        "private_key": GOOGLE_PRIVATE_KEY.replace("\\n", "\n"),
-        "client_email": GOOGLE_CLIENT_EMAIL,
-        "client_id": GOOGLE_CLIENT_ID,
-        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-        "token_uri": "https://oauth2.googleapis.com/token",
-        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-        "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{GOOGLE_CLIENT_EMAIL}"
-    }
+    print("JSON успешно распарсен")
+    print(f"client_email: {creds_dict.get('client_email', 'не найден')}")
+    
+except Exception as e:
+    print(f"❌ Ошибка при обработке GOOGLE_CREDS_BASE64: {e}")
+    raise
 
 scopes = [
     "https://www.googleapis.com/auth/spreadsheets",
