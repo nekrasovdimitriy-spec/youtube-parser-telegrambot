@@ -31,7 +31,7 @@ scopes = [
 ]
 
 credentials = Credentials.from_service_account_file(
-    "service_account.json",
+    "service_account.json.json",
     scopes=scopes
 )
 
@@ -216,3 +216,4 @@ app.add_handler(CallbackQueryHandler(button_handler))
 app.post_init = post_init
 
 app.run_polling()
+
