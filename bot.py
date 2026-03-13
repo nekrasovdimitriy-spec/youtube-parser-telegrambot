@@ -13,75 +13,35 @@ from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandle
 
 
 # =========================
-# ENV VARIABLES WITH DEBUG
+# ENV VARIABLES
 # =========================
 
-print("=== ДИАГНОСТИКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ ===")
-print(f"Все переменные окружения: {list(os.environ.keys())}")
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
+GOOGLE_CREDS_BASE64 = os.environ.get("GOOGLE_CREDS_BASE64")
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
-GOOGLE_CREDS_BASE64 = os.getenv("GOOGLE_CREDS_BASE64")
-
-print(f"BOT_TOKEN: {'✅' if BOT_TOKEN else '❌'}")
-print(f"YOUTUBE_API_KEY: {'✅' if YOUTUBE_API_KEY else '❌'}")
-print(f"GOOGLE_CREDS_BASE64: {'✅' if GOOGLE_CREDS_BASE64 else '❌'}")
-
-if not BOT_TOKEN:
-    raise ValueError("Не установлена переменная окружения BOT_TOKEN!")
-
-if not YOUTUBE_API_KEY:
-    raise ValueError("Не установлена переменная окружения YOUTUBE_API_KEY!")
-
-if not GOOGLE_CREDS_BASE64:
-    raise ValueError("Не установлена переменная окружения GOOGLE_CREDS_BASE64!")
+if not BOT_TOKEN or not YOUTUBE_API_KEY or not GOOGLE_CREDS_BASE64:
+    raise ValueError("Не установлены все переменные окружения!")
 
 
 # =========================
 # GOOGLE CREDS FROM BASE64
 # =========================
 
-try:
-    print("Декодируем GOOGLE_CREDS_BASE64...")
-    creds_json = base64.b64decode(GOOGLE_CREDS_BASE64).decode("utf-8")
-    print(f"JSON декодирован, длина: {len(creds_json)} символов")
-    
-    creds_dict = json.loads(creds_json)
-    print("JSON успешно распарсен")
-    print(f"client_email: {creds_dict.get('client_email', 'не найден')}")
-    
-except Exception as e:
-    print(f"❌ Ошибка при обработке GOOGLE_CREDS_BASE64: {e}")
-    raise
+creds_json = base64.b64decode(GOOGLE_CREDS_BASE64).decode("utf-8")
+creds_dict = json.loads(creds_json)
 
 scopes = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
-try:
-    credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-    print("✅ Credentials созданы успешно")
-except Exception as e:
-    print(f"❌ Ошибка создания credentials: {e}")
-    raise
+credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
 
-try:
-    gc = gspread.authorize(credentials)
-    print("✅ gspread авторизован успешно")
-except Exception as e:
-    print(f"❌ Ошибка авторизации gspread: {e}")
-    raise
+gc = gspread.authorize(credentials)
 
 SHEET_NAME = "YouTubeBotSubscriptions"
-try:
-    sheet = gc.open(SHEET_NAME).sheet1
-    print(f"✅ Таблица '{SHEET_NAME}' открыта успешно")
-except Exception as e:
-    print(f"❌ Ошибка открытия таблицы '{SHEET_NAME}': {e}")
-    raise
-
-print("=== ДИАГНОСТИКА ЗАВЕРШЕНА УСПЕШНО ===\n")
+sheet = gc.open(SHEET_NAME).sheet1
 
 
 # =========================
@@ -244,7 +204,6 @@ async def check_videos(app):
 # =========================
 
 async def post_init(app):
-    print("\n✅ Бот запущен и готов к работе!")
     app.create_task(check_videos(app))
 
 
@@ -257,5 +216,4 @@ app.add_handler(CallbackQueryHandler(button_handler))
 
 app.post_init = post_init
 
-print("🚀 Запуск бота...")
 app.run_polling()
